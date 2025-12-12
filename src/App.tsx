@@ -1,51 +1,157 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
+import { useEffect, useState, KeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+type CommandItem = {
+  id: string;
+  title: string;
+  subtitle?: string;
+};
+type RustAppItem = {
+  name: string;
+  exec: string;
+};
+
+
+const ALL_ITEMS: CommandItem[] = [
+  { id: "1", title: "Open Firefox", subtitle: "Browser" },
+  { id: "2", title: "Open VS Code", subtitle: "Editor" },
+  { id: "3", title: "Shutdown", subtitle: "System command" },
+  { id: "4", title: "Reboot", subtitle: "System command" },
+  { id: "5", title: "Open GitHub", subtitle: "Website" },
+];
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<CommandItem[]>(ALL_ITEMS);
+  const [allItems, setAllItems] = useState<CommandItem[]>(ALL_ITEMS);
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  useEffect(() => {
+    const q = query.toLowerCase();
+    const filtered = allItems.filter(
+      (item) =>
+        item.title.toLowerCase().includes(q) ||
+        item.subtitle?.toLowerCase().includes(q)
+    );
+    setResults(filtered);
+    setSelectedIndex(0);
+  }, [query,allItems]);
+
+  useEffect(()=>{
+    invoke<RustAppItem[]>("list_apps")
+    .then((appFromRust)=>{
+      const mapped:CommandItem[] = appFromRust.map((app,idx)=>({
+        id:`app-${idx}`,
+        title:app.name,
+        subtitle:app.exec,
+      }))
+      setAllItems((old)=>[...mapped,...old]);
+      setResults((old)=>[...mapped,...old]);
+    })
+    .catch((err)=>{
+      console.error("Failed to load apps from Rust: ", err);
+    })
+  },[])
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex((prev) =>
+        prev + 1 < results.length ? prev + 1 : prev
+      );
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev - 1 >= 0 ? prev - 1 : 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const item = results[selectedIndex];
+      if (item) {
+        invoke("run_app",{app:item.subtitle}).then(()=>{
+          console.log('Launched App');
+        }).catch((err)=>console.log(err,'was errror'))
+      }
+    } else if (e.key === "Escape") {
+      console.log("Escape pressed");
+    }
+  };
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
+    <div
+      style={{
+        height: "100vh",
+        width: "100vw",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "rgba(0,0,0,0.5)",
+      }}
+    >
+      <div
+        style={{
+          width: "600px",
+          borderRadius: "12px",
+          backgroundColor: "#111827",
+          padding: "12px 16px",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
+          color: "white",
+          fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
         }}
       >
         <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+          autoFocus
+          placeholder="Type a command or app name..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          style={{
+            width: "95%",
+            padding: "8px 10px",
+            borderRadius: "8px",
+            border: "1px solid #374151",
+            outline: "none",
+            backgroundColor: "#020617",
+            color: "white",
+            marginBottom: "8px",
+          }}
         />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+        <div
+          style={{
+            maxHeight: "300px",
+            overflowY: "auto",
+          }}
+        >
+          {results.length === 0 && (
+            <div style={{ padding: "8px", opacity: 0.7 }}>No results</div>
+          )}
+          {results.map((item, idx) => (
+            <div
+              key={item.id}
+              style={{
+                padding: "8px",
+                borderRadius: "6px",
+                marginBottom: "4px",
+                backgroundColor:
+                  idx === selectedIndex ? "#1f2937" : "transparent",
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ fontSize: "14px" }}>{item.title}</div>
+              {item.subtitle && (
+                <div
+                  style={{
+                    fontSize: "12px",
+                    opacity: 0.7,
+                  }}
+                >
+                  {item.subtitle}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
 export default App;
+
