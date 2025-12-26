@@ -10,6 +10,13 @@ type RustAppItem = {
   exec: string;
 };
 
+type SearchResult = {
+  name: string;
+  path:string;
+  kind:string;
+  score:number;
+}
+
 
 const ALL_ITEMS: CommandItem[] = [
   { id: "1", title: "Open Firefox", subtitle: "Browser" },
@@ -21,36 +28,34 @@ const ALL_ITEMS: CommandItem[] = [
 
 function App() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<CommandItem[]>(ALL_ITEMS);
-  const [allItems, setAllItems] = useState<CommandItem[]>(ALL_ITEMS);
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [allItems, setAllItems] = useState<SearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  useEffect(()=>{
+    const timeoutId = setTimeout(()=>{
+      invoke("search_file",{query:query})
+      .then((files)=>{
+        console.log("Files found: ", files);
+        setResults(files as SearchResult[]);
+      })
+      .catch((err)=>{
+        console.log("Error searching files: ", err);
+      })
+    },300)
+
+    return () => clearTimeout(timeoutId);
+  },[query])
   useEffect(() => {
     const q = query.toLowerCase();
     const filtered = allItems.filter(
       (item) =>
-        item.title.toLowerCase().includes(q) ||
-        item.subtitle?.toLowerCase().includes(q)
+        item.name.toLowerCase().includes(q) ||
+        item.name?.toLowerCase().includes(q)
     );
     setResults(filtered);
     setSelectedIndex(0);
   }, [query,allItems]);
-
-  useEffect(()=>{
-    invoke<RustAppItem[]>("list_apps")
-    .then((appFromRust)=>{
-      const mapped:CommandItem[] = appFromRust.map((app,idx)=>({
-        id:`app-${idx}`,
-        title:app.name,
-        subtitle:app.exec,
-      }))
-      setAllItems((old)=>[...mapped,...old]);
-      setResults((old)=>[...mapped,...old]);
-    })
-    .catch((err)=>{
-      console.error("Failed to load apps from Rust: ", err);
-    })
-  },[])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
@@ -64,8 +69,9 @@ function App() {
     } else if (e.key === "Enter") {
       e.preventDefault();
       const item = results[selectedIndex];
+      console.log("Enter pressed on item: ", item);
       if (item) {
-        invoke("run_app",{app:item.subtitle}).then(()=>{
+        invoke("start",{fileType:item.kind, path:item.path}).then(()=>{
           console.log('Launched App');
         }).catch((err)=>console.log(err,'was errror'))
       }
@@ -124,7 +130,7 @@ function App() {
           )}
           {results.map((item, idx) => (
             <div
-              key={item.id}
+              key={item.score}
               style={{
                 padding: "8px",
                 borderRadius: "6px",
@@ -134,15 +140,15 @@ function App() {
                 cursor: "pointer",
               }}
             >
-              <div style={{ fontSize: "14px" }}>{item.title}</div>
-              {item.subtitle && (
+              <div style={{ fontSize: "14px" }}>{item.name}</div>
+              {item.kind && (
                 <div
                   style={{
                     fontSize: "12px",
                     opacity: 0.7,
                   }}
                 >
-                  {item.subtitle}
+                  {item.kind}
                 </div>
               )}
             </div>
