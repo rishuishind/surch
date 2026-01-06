@@ -1,61 +1,47 @@
 import { useEffect, useState, KeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
-type CommandItem = {
-  id: string;
-  title: string;
-  subtitle?: string;
-};
-type RustAppItem = {
-  name: string;
-  exec: string;
-};
+
 
 type SearchResult = {
   name: string;
-  path:string;
-  kind:string;
-  score:number;
+  path: string;
+  kind: string;
+  score: number;
+  icon?: string;
 }
 
 
-const ALL_ITEMS: CommandItem[] = [
-  { id: "1", title: "Open Firefox", subtitle: "Browser" },
-  { id: "2", title: "Open VS Code", subtitle: "Editor" },
-  { id: "3", title: "Shutdown", subtitle: "System command" },
-  { id: "4", title: "Reboot", subtitle: "System command" },
-  { id: "5", title: "Open GitHub", subtitle: "Website" },
-];
 
 function App() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
-  const [allItems, setAllItems] = useState<SearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  useEffect(()=>{
-    const timeoutId = setTimeout(()=>{
-      invoke("search_file",{query:query})
-      .then((files)=>{
-        console.log("Files found: ", files);
-        setResults(files as SearchResult[]);
-      })
-      .catch((err)=>{
-        console.log("Error searching files: ", err);
-      })
-    },300)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      invoke("search_path_executables", { query: query })
+        .then((files) => {
+          console.log("Files found: ", files);
+          setResults(files as SearchResult[]);
+        })
+        .catch((err) => {
+          console.log("Error searching files: ", err);
+        })
+    }, 300)
 
     return () => clearTimeout(timeoutId);
-  },[query])
+  }, [query])
+
   useEffect(() => {
     const q = query.toLowerCase();
-    const filtered = allItems.filter(
+    const filtered = results.filter(
       (item) =>
         item.name.toLowerCase().includes(q) ||
         item.name?.toLowerCase().includes(q)
     );
     setResults(filtered);
     setSelectedIndex(0);
-  }, [query,allItems]);
+  }, [query]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
@@ -69,11 +55,10 @@ function App() {
     } else if (e.key === "Enter") {
       e.preventDefault();
       const item = results[selectedIndex];
-      console.log("Enter pressed on item: ", item);
       if (item) {
-        invoke("start",{fileType:item.kind, path:item.path}).then(()=>{
+        invoke("start", { fileType: item.kind, path: item.path }).then(() => {
           console.log('Launched App');
-        }).catch((err)=>console.log(err,'was errror'))
+        }).catch((err) => console.log(err, 'was errror'))
       }
     } else if (e.key === "Escape") {
       console.log("Escape pressed");
@@ -130,7 +115,7 @@ function App() {
           )}
           {results.map((item, idx) => (
             <div
-              key={item.score}
+              key={`${item.name}-${item.score}`}
               style={{
                 padding: "8px",
                 borderRadius: "6px",
@@ -138,19 +123,61 @@ function App() {
                 backgroundColor:
                   idx === selectedIndex ? "#1f2937" : "transparent",
                 cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
               }}
             >
-              <div style={{ fontSize: "14px" }}>{item.name}</div>
-              {item.kind && (
+              {/* Icon or fallback */}
+              {item.icon ? (
+                <img
+                  src={item.icon}
+                  alt={item.name}
+                  style={{
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "6px",
+                    objectFit: "cover",
+                  }}
+                  onError={(e) => {
+                    // Fallback to letter if image fails to load
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = "none";
+                  }}
+                />
+              ) : (
                 <div
                   style={{
-                    fontSize: "12px",
-                    opacity: 0.7,
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "6px",
+                    backgroundColor: "#374151",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "16px",
+                    fontWeight: "600",
+                    color: "#9ca3af",
                   }}
                 >
-                  {item.kind}
+                  {item.name.charAt(0).toUpperCase()}
                 </div>
               )}
+
+              {/* Text content */}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "14px" }}>{item.name}</div>
+                {item.kind && (
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      opacity: 0.7,
+                    }}
+                  >
+                    {item.kind}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
